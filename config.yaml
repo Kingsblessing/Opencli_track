@@ -1,0 +1,44 @@
+# ============ 采集配置 ============
+# platforms: 要采集的平台列表,可选 bilibili / douyin / redbook (小红书)
+# douyin / redbook 需要先在 Chrome 中登录对应网站 (opencli 走浏览器通道)
+platforms: [bilibili]
+
+# 搜索关键词(可多个)
+keywords: ["无畏契约 陪玩"]
+
+# 发布时间过滤:只保留最近 N 小时内发布的内容;0 表示不过滤
+# 注意: 目前仅 bilibili 支持服务端时间过滤;douyin/redbook 搜索结果不含发布时间,
+#       配置后会给出警告并照常采集
+publish_window_hours: 24
+
+# 每个关键词最多采集的视频/帖子数
+crawl_count: 20
+
+# ============ 评论采集 ============
+# 每个视频最多采集的一级评论数(平台单次上限 50,超过会自动截断)
+max_comments_per_video: 50
+
+# 楼中楼: 每条一级评论最多展开的回复数(0 = 不展开)
+max_replies: 10
+
+# ============ 正则匹配 ============
+match:
+  # 命中任一模式即视为匹配;支持 Python 正则语法
+  patterns: ["陪玩", "陪陪", "接陪", "代打", "代练", "接单"]
+  # 排除模式: 命中任一排除模式的评论会被丢弃
+  exclude_patterns: []
+  # true = 保存全部评论(未命中的 matched_patterns 为空);false = 只保存命中的
+  keep_all: false
+
+# ============ 输出 ============
+output:
+  dir: output
+  formats: [json, csv]      # json 固定输出到 data/;csv 表格输出到 output/
+  table_columns: [platform, video_id, video_title, author, text, likes, replies, time, parent_rpid, matched_patterns]
+
+# ============ 运行时 ============
+runtime:
+  request_interval_seconds: 3   # 两次 opencli 调用之间的间隔(限速防风控)
+  retry: 2                      # 瞬时错误重试次数(登录错误不重试)
+  timeout: 180                  # 单次 opencli 调用超时(秒)
+  browser_window: background    # 浏览器窗口模式: background / foreground

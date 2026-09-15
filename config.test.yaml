@@ -1,0 +1,20 @@
+# 小规模验证配置(临时)
+platforms: [bilibili]
+keywords: ["无畏契约 陪玩"]
+publish_window_hours: 72
+crawl_count: 50
+max_comments_per_video: 50
+max_replies: 10
+match:
+  patterns: ["陪玩", "陪陪", "接陪", "代打", "代练", "接单","俱乐部",]
+  exclude_patterns: []
+  keep_all: true
+output:
+  dir: output
+  formats: [json, csv]
+  table_columns: [platform, video_id, video_title, author, text, likes, replies, time, parent_rpid, matched_patterns]
+runtime:
+  request_interval_seconds: 3
+  retry: 2
+  timeout: 180
+  browser_window: background
