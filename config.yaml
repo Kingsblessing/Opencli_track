@@ -2,7 +2,8 @@ platforms:
 - bilibili
 - redbook
 keywords:
-- 无畏契约 陪玩
+- 无畏契约
+- 陪玩
 search_order: pubdate
 publish_window_hours: 24
 dedup_across_runs: false

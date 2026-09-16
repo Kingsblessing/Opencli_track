@@ -1,6 +1,7 @@
 """opencli 子进程封装、错误分类、限速重试、数值/时间解析等通用工具。"""
 import json
 import re
+import shutil
 import subprocess
 import time
 import datetime
@@ -19,6 +20,45 @@ class UnsupportedFeature(Exception):
     """平台未实现该能力。"""
 
 
+def _parse_cmd_node_entry(cmd_path: str) -> Optional[List[str]]:
+    """从 Windows opencli.cmd 解析 `node "...main.js"` 入口。
+
+    .cmd 经 cmd.exe 展开 %* 时,& | < > 会被当成 shell 元字符,带查询串的 URL
+    会被截断。直接调 node+脚本可避开该问题。
+    """
+    try:
+        text = open(cmd_path, encoding="utf-8", errors="replace").read()
+    except OSError:
+        return None
+    m = re.search(r'\bnode(?:\.exe)?\s+"([^"]+)"', text, re.I)
+    if not m:
+        m = re.search(r'\bnode(?:\.exe)?\s+(\S+\.js)', text, re.I)
+    if not m:
+        return None
+    node = shutil.which("node")
+    if not node:
+        return None
+    return [node, m.group(1)]
+
+
+def _resolve_opencli() -> List[str]:
+    """返回调用 opencli 的 argv 前缀。
+
+    Windows: npm 全局是 opencli.cmd —— 裸名找不到(WinError 2),且经 cmd 时
+    URL 中的 & 会被截断;优先解析为 [node, main.js]。
+    """
+    exe = shutil.which("opencli")
+    if not exe:
+        raise OpencliError(
+            "opencli not found in PATH; install with: npm install -g @jackwener/opencli"
+        )
+    if exe.lower().endswith((".cmd", ".bat")):
+        argv = _parse_cmd_node_entry(exe)
+        if argv:
+            return argv
+    return [exe]
+
+
 class Runner:
     """带限速/重试的 opencli 调用器,输出统一解析为 JSON。
 
@@ -32,6 +72,7 @@ class Runner:
         self.timeout = timeout
         self.checkpoint = checkpoint
         self._last_call = 0.0
+        self._opencli = _resolve_opencli()
 
     def run(self, args: List[str], allow_empty: bool = False) -> object:
         """执行 opencli 子命令并返回解析后的 JSON;失败抛 OpencliError/AuthError。
@@ -43,13 +84,14 @@ class Runner:
                 self.checkpoint()
             self._throttle()
             proc = subprocess.run(
-                ["opencli"] + args, capture_output=True, text=True,
+                self._opencli + args, capture_output=True, text=True,
+                encoding="utf-8", errors="replace",
                 timeout=self.timeout,
             )
-            out = proc.stdout.strip()
+            out = (proc.stdout or "").strip()
             if proc.returncode == 0:
                 return self._parse_json(out)
-            code, message, help_ = self._parse_error(out + "\n" + proc.stderr)
+            code, message, help_ = self._parse_error(out + "\n" + (proc.stderr or ""))
             if code == "AUTH_REQUIRED":
                 raise OpencliAuthError(message)
             if code == "EMPTY_RESULT" and allow_empty:
