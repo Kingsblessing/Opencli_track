@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Opencli_track 采集控制台</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <h1>Opencli_track 采集控制台</h1>
+  <div id="job-badge" class="badge idle">空闲</div>
+</header>
+
+<nav>
+  <button class="tab active" data-tab="jobs">任务</button>
+  <button class="tab" data-tab="config">配置</button>
+  <button class="tab" data-tab="results">结果</button>
+</nav>
+
+<!-- ========== 任务页 ========== -->
+<main id="tab-jobs" class="panel active">
+  <section class="card">
+    <h2>运行</h2>
+    <div class="row">
+      <label>步骤
+        <select id="run-step">
+          <option value="all">① 采集 + ② 评论判定(全部)</option>
+          <option value="collect">① 仅采集视频/帖子</option>
+          <option value="comments">② 仅评论采集+判定(用最近一次采集结果)</option>
+          <option value="match">③ 仅重跑判定(用已有评语料,不联网)</option>
+        </select>
+      </label>
+      <button id="btn-run" class="primary">▶ 开始</button>
+    </div>
+    <div class="row controls">
+      <button id="btn-pause" disabled>⏸ 暂停</button>
+      <button id="btn-resume" disabled>⏵ 恢复</button>
+      <button id="btn-stop" class="danger" disabled>⏹ 停止</button>
+    </div>
+    <div class="progress-wrap">
+      <div class="progress-bar"><div id="progress-fill"></div></div>
+      <div id="progress-text">尚未开始</div>
+    </div>
+  </section>
+
+  <section class="card grow">
+    <h2>日志</h2>
+    <pre id="log-box">等待任务…</pre>
+  </section>
+</main>
+
+<!-- ========== 配置页 ========== -->
+<main id="tab-config" class="panel">
+  <div id="config-form"></div>
+  <div class="card save-bar">
+    <button id="btn-save-config" class="primary">💾 保存配置</button>
+    <span id="config-msg"></span>
+    <span class="hint">保存前自动校验(正则/阈值/权重),非法配置不会写入磁盘</span>
+  </div>
+</main>
+
+<!-- ========== 结果页 ========== -->
+<main id="tab-results" class="panel">
+  <section class="card grow">
+    <div class="row spread">
+      <h2>输出文件 <button id="btn-refresh-outputs" class="small">↻ 刷新</button></h2>
+    </div>
+    <div class="row spread results-layout">
+      <ul id="file-list" class="file-list"></ul>
+      <div id="table-view" class="table-view"><p class="hint">左侧选择文件查看内容</p></div>
+    </div>
+  </section>
+</main>
+
+<script src="/app.js"></script>
+</body>
+</html>

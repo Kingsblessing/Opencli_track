@@ -40,13 +40,19 @@ class BilibiliPlatform(PlatformBase):
     name = "bilibili"
     display_name = "哔哩哔哩"
     supports_time_filter = True
+    supports_order_sort = True     # 浏览器路径支持 order=pubdate/click
     supports_comments = True
     login_hint = "请在 Chrome 打开 https://www.bilibili.com 并登录,或运行 opencli bilibili login"
 
+    # search_order → B 站搜索页 order 参数
+    _ORDER_PARAM = {"pubdate": "pubdate", "views": "click"}
+
     def search(self, keyword: str) -> List[VideoItem]:
         window_hours = int(self.config.get("publish_window_hours", 0) or 0)
-        if window_hours > 0:
-            items = self._search_browser(keyword, window_hours)
+        order = self.config.get("search_order", "relevance")
+        if window_hours > 0 or order in self._ORDER_PARAM:
+            # 浏览器路径: 支持服务端时间窗与排序参数(可叠加)
+            items = self._search_browser(keyword, window_hours, order)
         else:
             items = self._search_api(keyword)
         limit = int(self.config.get("crawl_count", 20))
@@ -68,11 +74,15 @@ class BilibiliPlatform(PlatformBase):
             ))
         return [v for v in items if v.id]
 
-    def _search_browser(self, keyword: str, window_hours: int) -> List[VideoItem]:
+    def _search_browser(self, keyword: str, window_hours: int,
+                        order: str = "relevance") -> List[VideoItem]:
         end = int(time.time())
         begin = end - window_hours * 3600
-        url = ("https://search.bilibili.com/all?keyword=" + quote(keyword)
-               + f"&pubtime_begin_s={begin}&pubtime_end_s={end}")
+        url = "https://search.bilibili.com/all?keyword=" + quote(keyword)
+        if window_hours > 0:
+            url += f"&pubtime_begin_s={begin}&pubtime_end_s={end}"
+        if order in self._ORDER_PARAM:
+            url += f"&order={self._ORDER_PARAM[order]}"
         session = f"oc_bili_{int(time.time() * 1000) % 10**9}"
         window = self.config.get("runtime", {}).get("browser_window", "background")
         self.runner.run(["browser", session, "open", url, "--window", window])
@@ -113,7 +123,7 @@ class BilibiliPlatform(PlatformBase):
         cfg_max = int(self.config.get("max_comments_per_video", 50))
         limit = min(cfg_max, 50)  # 官方 API 单次上限 50
         data = self.runner.run(["bilibili", "comments", video.id,
-                                "--limit", str(limit), "-f", "json"])
+                                "--limit", str(limit), "-f", "json"], allow_empty=True)
         out = []
         for row in data:
             out.append(CommentItem(
@@ -141,7 +151,8 @@ class BilibiliPlatform(PlatformBase):
             try:
                 data = self.runner.run(["bilibili", "comments", video.id,
                                         "--parent", c.rpid,
-                                        "--limit", str(max_replies), "-f", "json"])
+                                        "--limit", str(max_replies), "-f", "json"],
+                                       allow_empty=True)
             except Exception:
                 continue  # 单条楼中楼失败不影响整体
             for row in data:

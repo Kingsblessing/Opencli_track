@@ -15,6 +15,7 @@ class DouyinPlatform(PlatformBase):
     name = "douyin"
     display_name = "抖音"
     supports_time_filter = False   # 搜索结果不含发布时间
+    supports_order_sort = False    # opencli douyin search 无排序参数
     supports_comments = False      # opencli douyin 无通用评论命令
     login_hint = "请在 Chrome 打开 https://www.douyin.com 并登录,或运行 opencli douyin login"
 

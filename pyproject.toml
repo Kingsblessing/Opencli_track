@@ -1,0 +1,17 @@
+[project]
+name = "opencli-track"
+version = "1.0.0"
+description = "多平台(bilibili/douyin/redbook)视频与评论采集管道,支持按时间排序、正则匹配与 WebUI 控制台"
+requires-python = ">=3.9"
+dependencies = [
+    "pyyaml>=6.0",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "pydantic>=2.0",
+]
+
+[project.scripts]
+opencli-track = "main:main"
+
+[tool.setuptools]
+packages = ["src", "src.platforms", "webui"]

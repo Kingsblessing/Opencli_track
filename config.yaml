@@ -1,44 +1,179 @@
-# ============ 采集配置 ============
-# platforms: 要采集的平台列表,可选 bilibili / douyin / redbook (小红书)
-# douyin / redbook 需要先在 Chrome 中登录对应网站 (opencli 走浏览器通道)
-platforms: [bilibili]
-
-# 搜索关键词(可多个)
-keywords: ["无畏契约 陪玩"]
-
-# 发布时间过滤:只保留最近 N 小时内发布的内容;0 表示不过滤
-# 注意: 目前仅 bilibili 支持服务端时间过滤;douyin/redbook 搜索结果不含发布时间,
-#       配置后会给出警告并照常采集
+platforms:
+- bilibili
+- redbook
+keywords:
+- 无畏契约 陪玩
+search_order: pubdate
 publish_window_hours: 24
-
-# 每个关键词最多采集的视频/帖子数
-crawl_count: 20
-
-# ============ 评论采集 ============
-# 每个视频最多采集的一级评论数(平台单次上限 50,超过会自动截断)
+dedup_across_runs: false
+enrich_detail: false
+crawl_count: 50
 max_comments_per_video: 50
-
-# 楼中楼: 每条一级评论最多展开的回复数(0 = 不展开)
 max_replies: 10
-
-# ============ 正则匹配 ============
 match:
-  # 命中任一模式即视为匹配;支持 Python 正则语法
-  patterns: ["陪玩", "陪陪", "接陪", "代打", "代练", "接单"]
-  # 排除模式: 命中任一排除模式的评论会被丢弃
+  mode: intent
+  patterns:
+  - 陪玩
+  - 陪陪
+  - 接陪
+  - 代打
+  - 代练
+  - 接单
+  - 陪
+  - 技术
   exclude_patterns: []
-  # true = 保存全部评论(未命中的 matched_patterns 为空);false = 只保存命中的
-  keep_all: false
-
-# ============ 输出 ============
+  recall:
+    order:
+      weight: 6
+      patterns:
+      - (?:怎么|咋|如何|想|要)\s*(?:点(?:单|陪|一个)?|下单|约|订)
+      - (?:点单|点陪|下单|下陪)
+    availability:
+      weight: 6
+      patterns:
+      - (?:现在|目前|今天|今晚|明天|晚上|明早|白天|新手|新人|还)?\s*(?:有人|有没|有没有|能|可以)?\s*接(?:单|陪|代)?\s*(?:吗|么|嘛|不)
+      - (?:能|可以|还|现在|今天|晚上)\s*点(?:单|陪)?\s*(?:吗|么|嘛|不)
+      - (?:能|可以|会)\s*(?:打|玩|带|教|接|点|陪|上分|开|教学)\s*(?:吗|么|嘛|不(?!动|会|住|知))
+      - (?<!一起)(?<!一块)(?:打|带|教|陪|点)\s*(?:吗|么|嘛)
+      - (?<!全天)(?<!随时)(?<!长期)(?<!一直)\s*(?:现在|今天|今晚|晚上|白天)?\s*(?:还|有)?\s*空\s*(?:吗|么|嘛)
+      - (?:有人吗|ok吗|OK吗)\s*[?？]?
+    presence_weak:
+      weight: 3
+      patterns:
+      - (?:在吗|在不在)\s*[?？]?
+    inquiry:
+      weight: 4
+      patterns:
+      - 问问\s*(?:钻石|铂金|黄金|白银|超凡|神话|赋能|价格|多少|陪|代)
+    looking_for:
+      weight: 5
+      patterns:
+      - (?:找|求|来个|来一[个位]?|要个|需要|想找|想要|有没有|有没|有无|有)\s*.{0,8}(?:陪玩|陪陪|女陪|男陪|技术陪|娱乐陪|代打|代练|陪)
+    price_query:
+      weight: 5
+      patterns:
+      - (?:多少(?:钱)?|什么价(?:格)?|啥价(?:格)?|价格多少|怎么收费|贵不贵|几块|几十)\s*.{0,8}(?:一小时|一把|一局|一h|陪|陪玩)?
+    skill_demand:
+      weight: 4
+      patterns:
+      - (?:有没有|有没|有|找|求|来个|需要|想找|谁有|哪里有)\s*.{0,8}(?:代打|代练|技术陪|技术女陪|靠谱|打手)
+    game_demand:
+      weight: 3
+      patterns:
+      - (?:带我|带一下|带带|帮我|陪我)\s*.{0,10}(?:上分|上黄金|上铂金|上钻石|上超凡|上神话|上赋能|晋级)
+      - (?:求|想|要|需要|缺|找|来个|有无|救救|帮我)\s*.{0,6}(?:上分|上黄金|上铂金|上钻石|上超凡|上神话|晋级|带带|带我|拉我|固定队|车位)
+    social_weak:
+      weight: 1
+      patterns:
+      - (?:一起玩|一块玩|一起打|有人玩|没人一起|开黑|组队|找个队友|缺个队友|加水友)
+    topic_generic:
+      weight: 0.5
+      patterns:
+      - (?:陪|技术|代打|代练|上分|赋能|神话|老板|板板|价格|接单)
+  negative:
+    self_promo:
+      weight: -5
+      patterns:
+      - (?:本人|我是(?:陪|打手|代)|国服|双服|双(?:神话|赋能|区)|多赛季|上过.{0,4}(?:神话|赋能|超凡)|(?:上|本)?赛季.{0,4}(?:超凡|神话|赋能|神二|神三))
+      - 希望可以陪到
+      - (?<!有)(?<!要)(?<!求)(?<!找)(?<!来)(?<!个)(?<!缺)(?:赋能|神话|超凡|钻石|铂金|黄金)\s*陪
+    recruitment:
+      weight: -5
+      patterns:
+      - (?:招(?:陪|人|打手|新)|进团|入团|俱乐部|新店|开业|营业|平移|公会|工作室|战队招)
+    contact_solicit:
+      weight: -4
+      patterns:
+      - (?:主页|私(?:信|我|聊)|加(?:我|v|V|微|q|Q)|留(?:个)?(?:v|V|q|Q)|滴滴我|dd我|抠|扣扣|微信|企微|vx|VX|qq|QQ|联系我|找我|可以加|随时加)
+    pricing_offer:
+      weight: -4
+      patterns:
+      - (?:首单|优惠|白菜价|黑奴价|特价|打折|活动价|包月|套餐|价目表|价格表|价位|可议价|便宜出)
+      - \d+\s*(?:r|h|元|米|块)(?![A-Za-z0-9])
+      - \d+\s*(?:一把|一局|一小时|一h)
+      - \d+\s*/\s*(?:h|把|局|小时)
+    wait_order:
+      weight: -4
+      patterns:
+      - (?:在线等单|蹲(?:板板|老板|单)|等单|接单记录|战绩|可验枪|可验号|秒上号|全天在线|长期在线|随时在线|欢迎来|求单|接单中|开始接单|直接来)
+    voice_sales:
+      weight: -3
+      patterns:
+      - (?:(?:青年|少女|御姐|萝莉|奶音|正太|叔音|青受|磁性|极品)音|试音|声音好|情绪价值|声线|会唱歌|会唠|陪聊|开麦)
+    teaching_offer:
+      weight: -3
+      patterns:
+      - (?:可教学|包c|包C|不c包退|包赢|输了结|输前三|结前三|教学局|陪练教学|包上分|不赢不结|保上|把杀|带躺)
+  direction:
+    enabled: true
+    seller:
+      weight: -5
+      patterns:
+      - (?:我|本人|一直|目前|平时|长期|全天|日常|随缘)\s*.{0,6}(?:接单|接陪|代打|代练|陪玩)
+    buyer:
+      weight: 4
+      patterns:
+      - (?:现在|今天|今晚|明天|晚上|还|有人|有没|有没有|能|可以|新手)\s*.{0,4}(?:接单|接陪|接)\s*(?:吗|么|嘛|不)
+  post_context:
+    enabled: true
+    rules:
+      discussion:
+        adjust: -2
+        patterns:
+        - (?:避雷|吐槽|曝光|被骗|拉黑|骗子|翻车|投稿|经历|难受|离谱|踩雷|维权)
+      service_selling:
+        adjust: 1
+        patterns:
+        - (?:点单|俱乐部|电竞|陪玩店|瓦陪店|营业|接单|首单|优惠|工作室|\d+\.\d+\s*(?:r|h|元|米)|\d+\s*(?:r|h)(?![A-Za-z0-9]))
+      user_seeking:
+        adjust: -1
+        patterns:
+        - (?:找个|求个|来个|有没有|需要一个|想找个|求推荐|急需).{0,10}(?:陪|代练|代打|带)
+  author_role:
+    enabled: true
+    min_comments: 2
+    seller_ratio: 0.6
+  dedup:
+    enabled: true
+    similarity: 0.85
+    spam_min_authors: 3
+  thresholds:
+    high: 6
+    medium: 3
+    low: 1
+  keep_all: true
+  only_leads: false
 output:
   dir: output
-  formats: [json, csv]      # json 固定输出到 data/;csv 表格输出到 output/
-  table_columns: [platform, video_id, video_title, author, text, likes, replies, time, parent_rpid, matched_patterns]
-
-# ============ 运行时 ============
+  formats:
+  - json
+  - csv
+  table_columns:
+  - platform
+  - video_id
+  - video_title
+  - video_url
+  - author
+  - lead_level
+  - intent
+  - intent_score
+  - post_type
+  - positive_patterns
+  - negative_patterns
+  - reason
+  - author_role
+  - author_comment_count
+  - dup_count
+  - is_spam
+  - text
+  - likes
+  - time
 runtime:
-  request_interval_seconds: 3   # 两次 opencli 调用之间的间隔(限速防风控)
-  retry: 2                      # 瞬时错误重试次数(登录错误不重试)
-  timeout: 180                  # 单次 opencli 调用超时(秒)
-  browser_window: background    # 浏览器窗口模式: background / foreground
+  request_interval_seconds: 3
+  retry: 2
+  timeout: 180
+  browser_window: background
+webui:
+  host: 127.0.0.1
+  port: 8765
+  open_browser: true
