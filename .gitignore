@@ -1,17 +1,29 @@
-# 运行环境与缓存
+# ============ 运行环境与缓存(不入库) ============
+# 虚拟环境:包含指向本机 Python 的符号链接与绝对路径,换机器必然失效。
+# 请用 ./run.sh / run.ps1 或 pip install -r requirements.txt 重建。
 .venv/
-__pycache__/
-*.pyc
-logs_webui_test.log
+venv/
+env/
 
-# 采集产物(数据与表格,不入库)
-data/videos/
-data/comments/
-data/seen.json
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# 日志
+logs/
+*.log
+
+# ============ 采集产物(不入库) ============
+# 目录由程序自动创建(data/ 与 output/),无需占位文件
+data/
 output/
 
-# 系统文件
+# ============ 系统与编辑器 ============
 .DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
 
-# 其他
-algorithm.md
+# ============ 本地工具状态 ============
+.zcode/
