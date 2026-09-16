@@ -1,4 +1,4 @@
-# Opencli_track 一键引导(Windows PowerShell):
+﻿# Opencli_track 一键引导(Windows PowerShell):
 #   安装 uv + Python + 依赖 + Node/opencli,然后启动 WebUI。幂等,可重复执行。
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
