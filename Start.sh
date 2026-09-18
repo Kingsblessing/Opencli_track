@@ -1,4 +1,3 @@
 #!/usr/bin/env bash
-# 请优先 ./Start.sh。本脚本转发到 scripts/bootstrap.sh。
 cd "$(dirname "$0")"
 exec bash scripts/bootstrap.sh

@@ -9,17 +9,20 @@
 
 ## 快速开始(一键引导)
 
-```bash
-./run.sh          # macOS / Linux
-run.ps1           # Windows PowerShell
-```
+Windows 双击 **`Start.bat`**(或在 PowerShell 里运行 `.\run.ps1`)。
+macOS / Linux 运行 `./Start.sh`(或 `./run.sh`)。
 
 脚本幂等地完成:安装 uv → 由 uv 自动下载 Python 并建 `.venv` → 装 Python 依赖 →
-检测/安装 Node 与 `@jackwener/opencli` → `opencli doctor` 体检 → 启动 WebUI
-(默认 http://127.0.0.1:8765)。
+把 Node 与 `@jackwener/opencli` 装进项目目录 `.tools/`(不写系统 PATH、不 `npm install -g`)
+→ `opencli doctor` 体检(失败不中断) → 启动 WebUI(默认 http://127.0.0.1:8765)。
 
-> **无法内置的部分**:Chrome 浏览器本体与各网站登录态。脚本会检测并提示,
-> 需要你手动登录对应网站(浏览器采集依赖本机 Chrome)。
+第一次打开 WebUI 会进入**环境引导**:可一键打开
+[OpenCLI Chrome 扩展商店](https://chromewebstore.google.com/detail/opencli/ildkmabpimmkaediidaifkhjpohdnifk)、
+扩展管理页,以及哔哩哔哩 / 抖音 / 小红书登录页。扩展是否装好以 doctor 的
+「Extension connected」为准;点「重新检测」刷新。doctor 全绿或选择「稍后配置」后进入控制台。
+
+> **仍需本机已有的部分**:Chrome 浏览器本体,以及你在 Chrome 里的网站登录态。
+> 脚本不能代替你点击商店的「添加至 Chrome」,也不能代登录。
 
 ## 命令行用法
 
@@ -33,16 +36,19 @@ run.ps1           # Windows PowerShell
 .venv/bin/python main.py --list-platforms            # 查看已注册平台
 ```
 
-**前提**:已 `npm install -g @jackwener/opencli` 并完成 `opencli setup`;
+**前提**:用 `Start.bat` / `Start.sh` 装好项目内 opencli,并在 WebUI 引导里装好 Chrome 扩展。
 **douyin / redbook 需要先在 Chrome 登录对应网站**。未登录时程序检测到 `AUTH_REQUIRED`
 会给出提示并跳过该平台,不影响其他平台。
 
 ## 目录结构
 
 ```
+Start.bat / Start.sh    # 一键启动(推荐)
+run.sh / run.ps1       # 转发到 scripts/bootstrap.*
+scripts/               # 项目内 Node/opencli 引导
+.tools/                # 便携 Node 与 opencli(不入库)
 config.yaml            # ③ 全部可调配置
 main.py                # CLI 入口(含 --webui)
-run.sh / run.ps1       # 跨平台一键引导
 requirements.txt       # Python 依赖
 pyproject.toml         # 项目元数据与依赖声明
 src/
@@ -213,8 +219,9 @@ output/                # 表格输出 *.csv(采集与评论结果)
 
 ## 已知约束
 
-- **浏览器采集**依赖本机 Chrome + opencli 扩展(`opencli doctor` 可体检);扩展掉线时先
-  `opencli doctor`,必要时 `opencli daemon restart` 并等待重连。
+- **浏览器采集**依赖本机 Chrome + OpenCLI 扩展。请用 `Start.bat` 启动,在 WebUI
+  引导页打开商店安装扩展;扩展掉线时点「重新检测」,或 `opencli daemon restart` 后重试。
+  项目调用 opencli 时走 `node` + `main.js`,避免 Windows `.cmd` 截断 URL 里的 `&`。
 - **bilibili 搜索页**先渲染卡片骨架再填充内容,已做轮询等待;无时间窗且综合排序时走官方 API。
 - **小红书风控**:短时间高频访问详情页会触发 `SECURITY_BLOCK`,该条评论会被跳过(按条容错,
   不中断整体)。建议保持 `request_interval_seconds ≥ 3`。

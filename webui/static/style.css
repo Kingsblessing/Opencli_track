@@ -25,6 +25,26 @@ body {
 button, input, select, textarea { font-family: var(--font); font-size: 14px; color: var(--text); }
 code, pre, .mono { font-family: var(--mono); }
 
+.header-setup { margin-left: auto; }
+.setup-gate {
+  position: fixed; inset: 0; z-index: 40;
+  background: rgba(31, 37, 48, .45);
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 48px 16px 24px; overflow: auto;
+}
+.setup-gate[hidden] { display: none; }
+.setup-card { width: min(720px, 100%); }
+.setup-checks { list-style: none; padding: 0; margin: 0 0 12px; }
+.setup-checks li { padding: 6px 0; }
+.setup-checks .ok { color: var(--ok); }
+.setup-checks .bad { color: var(--danger); }
+.setup-raw {
+  max-height: 160px; overflow: auto; background: #f7f8fa;
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  padding: 8px 10px; font-size: 12px; white-space: pre-wrap;
+}
+.setup-logins label { display: flex; gap: 6px; align-items: center; }
+
 /* ============ 顶栏与导航 ============ */
 header {
   display: flex; align-items: center; gap: 12px; padding: 14px 24px;

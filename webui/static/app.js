@@ -1,6 +1,67 @@
 /* Opencli_track WebUI 前端逻辑 */
 const $ = (id) => document.getElementById(id);
 
+// ---------- 首次环境引导 ----------
+const CHECK_LABELS = [
+  ['daemon', 'Daemon'],
+  ['extension', 'Chrome 扩展'],
+  ['connectivity', '浏览器连通'],
+];
+
+function renderSetup(st) {
+  const gate = $('setup-gate');
+  const checks = $('setup-checks');
+  const doc = st.doctor || {};
+  checks.innerHTML = CHECK_LABELS.map(([k, label]) => {
+    const ok = !!doc[k];
+    return `<li class="${ok ? 'ok' : 'bad'}">${ok ? '✓' : '✗'} ${label}</li>`;
+  }).join('');
+  $('setup-raw').textContent = doc.raw || '';
+  const logins = st.confirmed_logins || {};
+  $('login-bilibili').checked = !!logins.bilibili;
+  $('login-douyin').checked = !!logins.douyin;
+  $('login-xiaohongshu').checked = !!logins.xiaohongshu;
+  gate.hidden = !st.show_gate;
+  return st;
+}
+
+async function refreshSetup(showAlways) {
+  const st = await api('/api/setup/status');
+  if (!st.ok) return st;
+  if (showAlways) st.show_gate = true;
+  return renderSetup(st);
+}
+
+async function openSetup(action) {
+  const r = await api('/api/setup/open', 'POST', {action});
+  if (!r.ok) alert('无法打开: ' + (r.detail || r.message || ''));
+}
+
+$('btn-open-store').onclick = () => openSetup('extension_store');
+$('btn-open-ext').onclick = () => openSetup('chrome_extensions');
+$('btn-setup-refresh').onclick = () => refreshSetup(true);
+$('btn-setup').onclick = () => refreshSetup(true);
+document.querySelectorAll('[data-open]').forEach(btn => {
+  btn.onclick = () => openSetup(btn.dataset.open);
+});
+$('btn-setup-enter').onclick = async () => {
+  const st = await api('/api/setup/status');
+  if (st.ok && !st.ready) {
+    const go = confirm('doctor 尚未全部通过。仍要进入控制台?采集前需要扩展已连接。');
+    if (!go) return;
+  }
+  await api('/api/setup/ack', 'POST', {
+    dismissed: true,
+    confirmed_logins: {
+      bilibili: $('login-bilibili').checked,
+      douyin: $('login-douyin').checked,
+      xiaohongshu: $('login-xiaohongshu').checked,
+    },
+  });
+  $('setup-gate').hidden = true;
+};
+refreshSetup(false);
+
 // ---------- 标签页 ----------
 document.querySelectorAll('.tab').forEach(btn => {
   btn.onclick = () => {
@@ -15,6 +76,14 @@ document.querySelectorAll('.tab').forEach(btn => {
 
 // ---------- 任务控制 ----------
 $('btn-run').onclick = async () => {
+  const setup = await api('/api/setup/status');
+  if (setup.ok && !setup.ready) {
+    const go = confirm('环境检测未通过(扩展或 daemon)。仍要开始采集?');
+    if (!go) {
+      refreshSetup(true);
+      return;
+    }
+  }
   const step = $('run-step').value;
   const r = await api('/api/run', 'POST', {step});
   if (!r.ok) alert('启动失败: ' + (r.detail ? JSON.stringify(r.detail) : r.message || r));

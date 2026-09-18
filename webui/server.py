@@ -6,6 +6,7 @@ import asyncio
 import csv
 import json
 import os
+import subprocess
 import webbrowser
 import yaml
 from pathlib import Path
@@ -21,6 +22,7 @@ from src.jobs import JobManager
 from src.pipeline import (load_config, validate_config, save_config,
                           DEFAULT_CONFIG_PATH, ROOT)
 from src.platforms import available_platforms
+from src.utils import doctor_report
 
 app = FastAPI(title="Opencli_track WebUI")
 STATIC_DIR = Path(__file__).parent / "static"
@@ -40,6 +42,114 @@ def _safe_path(rel_path: str) -> str:
         if p.startswith(os.path.realpath(d) + os.sep):
             return p
     raise HTTPException(400, f"路径不在结果目录内: {rel_path}")
+
+
+# ---------------- 首次环境引导 ----------------
+
+SETUP_STATE_PATH = os.path.join(ROOT, "data", "setup_state.json")
+EXTENSION_STORE_URL = (
+    "https://chromewebstore.google.com/detail/opencli/"
+    "ildkmabpimmkaediidaifkhjpohdnifk"
+)
+OPEN_URLS = {
+    "extension_store": EXTENSION_STORE_URL,
+    "chrome_extensions": "chrome://extensions",
+    "login_bilibili": "https://www.bilibili.com",
+    "login_douyin": "https://www.douyin.com",
+    "login_xiaohongshu": "https://www.xiaohongshu.com",
+}
+
+
+def _load_setup_state() -> dict:
+    if not os.path.isfile(SETUP_STATE_PATH):
+        return {"dismissed": False, "confirmed_logins": {}}
+    try:
+        with open(SETUP_STATE_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return {"dismissed": False, "confirmed_logins": {}}
+    data.setdefault("dismissed", False)
+    data.setdefault("confirmed_logins", {})
+    return data
+
+
+def _save_setup_state(data: dict) -> None:
+    os.makedirs(os.path.dirname(SETUP_STATE_PATH), exist_ok=True)
+    with open(SETUP_STATE_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def _chrome_candidates() -> list:
+    local = os.environ.get("LOCALAPPDATA", "")
+    return [
+        os.path.join(os.environ.get("PROGRAMFILES", r"C:\Program Files"),
+                     "Google", "Chrome", "Application", "chrome.exe"),
+        os.path.join(os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)"),
+                     "Google", "Chrome", "Application", "chrome.exe"),
+        os.path.join(local, "Google", "Chrome", "Application", "chrome.exe"),
+    ]
+
+
+def _open_in_browser(url: str) -> None:
+    """打开普通网页或 chrome:// 页面。商店页用系统浏览器;扩展管理尽量用本机 Chrome。"""
+    if url.startswith("chrome://"):
+        for exe in _chrome_candidates():
+            if exe and os.path.isfile(exe):
+                subprocess.Popen([exe, url])
+                return
+    if os.name == "nt":
+        os.startfile(url)  # noqa: S606 — 仅打开白名单 URL
+        return
+    webbrowser.open(url)
+
+
+class OpenBody(BaseModel):
+    action: str
+
+
+class AckBody(BaseModel):
+    dismissed: bool = False
+    confirmed_logins: dict = {}
+
+
+@app.get("/api/setup/status")
+def setup_status():
+    state = _load_setup_state()
+    report = doctor_report()
+    ready = bool(report.get("ok"))
+    return {
+        "ready": ready,
+        "dismissed": bool(state.get("dismissed")),
+        "show_gate": (not ready) and (not state.get("dismissed")),
+        "confirmed_logins": state.get("confirmed_logins") or {},
+        "extension_store": EXTENSION_STORE_URL,
+        "doctor": report,
+    }
+
+
+@app.post("/api/setup/open")
+def setup_open(body: OpenBody):
+    url = OPEN_URLS.get(body.action)
+    if not url:
+        raise HTTPException(422, "未知 action")
+    try:
+        _open_in_browser(url)
+    except OSError as e:
+        raise HTTPException(500, f"无法打开浏览器: {e}")
+    return {"ok": True, "url": url}
+
+
+@app.post("/api/setup/ack")
+def setup_ack(body: AckBody):
+    state = _load_setup_state()
+    if body.dismissed:
+        state["dismissed"] = True
+    if body.confirmed_logins:
+        logins = state.setdefault("confirmed_logins", {})
+        logins.update({k: bool(v) for k, v in body.confirmed_logins.items()})
+    _save_setup_state(state)
+    return {"ok": True, "dismissed": state.get("dismissed"),
+            "confirmed_logins": state.get("confirmed_logins")}
 
 
 # ---------------- 配置 ----------------

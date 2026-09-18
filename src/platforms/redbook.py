@@ -15,7 +15,8 @@ from typing import List
 from urllib.parse import quote
 
 from ..models import VideoItem, CommentItem
-from ..utils import parse_count, parse_relative_time, parse_time_with_region, first_nonempty
+from ..utils import (parse_count, parse_relative_time, parse_time_with_region,
+                      first_nonempty, OpencliError)
 from .base import PlatformBase
 
 _NOTE_ID = re.compile(r"/(?:explore|note|search_result)/([0-9a-zA-Z]{16,32})")
@@ -121,7 +122,7 @@ class RedbookPlatform(PlatformBase):
                                 "--limit", str(limit), "-f", "json"])
         items = []
         for row in data:
-            url = first_nonempty(row, ["url", "link", "note_url"])
+            url = self.normalize_note_url(first_nonempty(row, ["url", "link", "note_url"]))
             nid = (_NOTE_ID.search(url or "") or ["", ""])[1] \
                 or str(row.get("note_id", "") or row.get("id", ""))
             items.append(VideoItem(
@@ -232,12 +233,32 @@ class RedbookPlatform(PlatformBase):
 
     # ---------- 评论 ----------
 
-    # 上游输出列为 rank/author/userId/profileUrl/text/likes/time/is_reply/reply_to/images;
-    # 没有评论 ID,列表是扁平的(回复紧跟其一级评论,is_reply=true),故 rpid 本地合成。
-    def comments(self, video: VideoItem) -> List[CommentItem]:
-        cfg_max = int(self.config.get("max_comments_per_video", 50))
-        limit = min(cfg_max, 50)
-        max_replies = int(self.config.get("max_replies", 0) or 0)
+    @staticmethod
+    def normalize_note_url(url: str) -> str:
+        """补全空的 xsec_source,不重编码 query(token 末尾的 = 不能变成 %3D)。"""
+        if not url or "xsec_token=" not in url:
+            return url or ""
+        if re.search(r"[?&]xsec_source=[^&]+", url):
+            return url
+        if re.search(r"[?&]xsec_source=", url):
+            return re.sub(r"([?&]xsec_source=)(?=&|$)", r"\1pc_search", url)
+        sep = "&" if "?" in url else "?"
+        return url + sep + "xsec_source=pc_search"
+
+    def _fresh_url_for_id(self, keyword: str, note_id: str) -> str:
+        """用一次新搜索换同笔记的 xsec_token(旧 token 会 Navigation rejected)。"""
+        if not keyword or not note_id:
+            return ""
+        try:
+            items = self._search_api(keyword, fetch_limit=20)
+        except Exception:
+            return ""
+        for item in items:
+            if item.id == note_id and item.url:
+                return self.normalize_note_url(item.url)
+        return ""
+
+    def _fetch_comments(self, video: VideoItem, limit: int, max_replies: int) -> List[CommentItem]:
         args = ["xiaohongshu", "comments", video.url, "--limit", str(limit)]
         if max_replies > 0:
             args += ["--with-replies", "true"]
@@ -274,8 +295,25 @@ class RedbookPlatform(PlatformBase):
                        "ip_location": region},
             )
             out.append(c)
-        # 回填一级评论的实际回复数
         for c in out:
             if c.parent_rpid is None:
                 c.replies = reply_count.get(c.rpid, 0)
         return out
+
+    # 上游输出列为 rank/author/userId/profileUrl/text/likes/time/is_reply/reply_to/images;
+    # 没有评论 ID,列表是扁平的(回复紧跟其一级评论,is_reply=true),故 rpid 本地合成。
+    def comments(self, video: VideoItem) -> List[CommentItem]:
+        cfg_max = int(self.config.get("max_comments_per_video", 50))
+        limit = min(cfg_max, 50)
+        max_replies = int(self.config.get("max_replies", 0) or 0)
+        video.url = self.normalize_note_url(video.url)
+        try:
+            return self._fetch_comments(video, limit, max_replies)
+        except OpencliError as e:
+            if "navigation rejected" not in str(e).lower():
+                raise
+            fresh = self._fresh_url_for_id(video.search_keyword, video.id)
+            if not fresh or fresh == video.url:
+                raise
+            video.url = fresh
+            return self._fetch_comments(video, limit, max_replies)

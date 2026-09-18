@@ -1,10 +1,12 @@
 """opencli 子进程封装、错误分类、限速重试、数值/时间解析等通用工具。"""
 import json
+import os
 import re
 import shutil
 import subprocess
 import time
 import datetime
+from pathlib import Path
 from typing import List, Optional
 
 
@@ -20,43 +22,140 @@ class UnsupportedFeature(Exception):
     """平台未实现该能力。"""
 
 
-def _parse_cmd_node_entry(cmd_path: str) -> Optional[List[str]]:
-    """从 Windows opencli.cmd 解析 `node "...main.js"` 入口。
+def _project_root() -> Path:
+    return Path(__file__).resolve().parent.parent
 
-    .cmd 经 cmd.exe 展开 %* 时,& | < > 会被当成 shell 元字符,带查询串的 URL
-    会被截断。直接调 node+脚本可避开该问题。
+
+def _project_opencli_argv() -> Optional[List[str]]:
+    """项目内 .tools 的 node + main.js。不依赖 PATH,也不会走 .cmd。"""
+    root = _project_root()
+    main = root / ".tools" / "opencli" / "node_modules" / "@jackwener" / "opencli" / "dist" / "src" / "main.js"
+    if not main.is_file():
+        return None
+    for node in (
+        root / ".tools" / "node" / "node.exe",
+        root / ".tools" / "node" / "bin" / "node",
+    ):
+        if node.is_file():
+            return [str(node), str(main)]
+    node = shutil.which("node")
+    if node and not node.lower().endswith((".cmd", ".bat")):
+        return [node, str(main)]
+    return None
+
+
+def _node_beside(start: str) -> Optional[str]:
+    """从垫片所在目录向上找 node.exe / node,避开 PATH 里的坏垫片。"""
+    cur = os.path.dirname(os.path.abspath(start))
+    for _ in range(6):
+        for name in ("node.exe", "node"):
+            cand = os.path.join(cur, name)
+            if os.path.isfile(cand):
+                return cand
+        parent = os.path.dirname(cur)
+        if parent == cur:
+            break
+        cur = parent
+    node = shutil.which("node")
+    if node and not node.lower().endswith((".cmd", ".bat")):
+        return node
+    return None
+
+
+def _parse_cmd_node_entry(cmd_path: str) -> Optional[List[str]]:
+    """从 .cmd/.bat 垫片解析出 [node, script.js]。
+
+    覆盖官方 `node "...js"` 与 npm 垫片 `"%_prog%" "%dp0%\\node_modules\\...js"`。
+    解析失败则返回 None —— 调用方不得回退执行 .cmd(cmd 会把 URL 中的 & 截断)。
     """
     try:
         text = open(cmd_path, encoding="utf-8", errors="replace").read()
     except OSError:
         return None
-    m = re.search(r'\bnode(?:\.exe)?\s+"([^"]+)"', text, re.I)
-    if not m:
-        m = re.search(r'\bnode(?:\.exe)?\s+(\S+\.js)', text, re.I)
-    if not m:
+    cmd_dir = os.path.dirname(os.path.abspath(cmd_path))
+
+    def expand(raw: str) -> str:
+        s = raw.strip().strip('"')
+        repl = cmd_dir + os.sep
+        s = re.sub(r"%dp0%", lambda _: repl, s, flags=re.I)
+        s = re.sub(r"%~dp0", lambda _: repl, s, flags=re.I)
+        return os.path.normpath(s)
+
+    scripts: List[str] = []
+    for m in re.finditer(r'"([^"]+\.js)"', text, re.I):
+        scripts.append(expand(m.group(1)))
+    for m in re.finditer(r'((?:%dp0%|%~dp0)[\\/][^\s"]+\.js)', text, re.I):
+        scripts.append(expand(m.group(1)))
+    for m in re.finditer(r'\bnode(?:\.exe)?\s+"?([^\s"]+\.js)"?', text, re.I):
+        scripts.append(expand(m.group(1)))
+
+    js = next((p for p in scripts if os.path.isfile(p)), None)
+    if not js:
         return None
-    node = shutil.which("node")
+    node = _node_beside(cmd_path) or _node_beside(js)
     if not node:
         return None
-    return [node, m.group(1)]
+    return [node, js]
 
 
 def _resolve_opencli() -> List[str]:
-    """返回调用 opencli 的 argv 前缀。
+    """返回调用 opencli 的 argv 前缀 [node, main.js] 或 Unix 可执行文件。
 
-    Windows: npm 全局是 opencli.cmd —— 裸名找不到(WinError 2),且经 cmd 时
-    URL 中的 & 会被截断;优先解析为 [node, main.js]。
+    优先项目内 .tools。禁止直接执行 .cmd/.bat:Windows 上 cmd 会把 & 当成分隔符。
     """
+    local = _project_opencli_argv()
+    if local:
+        return local
+
     exe = shutil.which("opencli")
     if not exe:
         raise OpencliError(
-            "opencli not found in PATH; install with: npm install -g @jackwener/opencli"
+            "opencli not found。请双击 Start.bat 安装项目内工具链,"
+            "或设置 PATH 中的 opencli(不要用 WindowsApps 残留垫片)。"
         )
-    if exe.lower().endswith((".cmd", ".bat")):
+    low = exe.lower()
+    if low.endswith((".cmd", ".bat")):
         argv = _parse_cmd_node_entry(exe)
         if argv:
             return argv
+        raise OpencliError(
+            f"opencli 垫片无法解析为 node+js,已拒绝执行 .cmd: {exe}"
+        )
     return [exe]
+
+
+def doctor_report() -> dict:
+    """跑项目内 opencli doctor,解析 daemon / extension / connectivity。"""
+    try:
+        argv = _resolve_opencli()
+    except OpencliError as e:
+        return {"ok": False, "daemon": False, "extension": False,
+                "connectivity": False, "returncode": None, "raw": str(e), "argv": []}
+    try:
+        proc = subprocess.run(
+            argv + ["doctor"], capture_output=True, text=True,
+            encoding="utf-8", errors="replace", timeout=90,
+        )
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return {"ok": False, "daemon": False, "extension": False,
+                "connectivity": False, "returncode": None, "raw": str(e), "argv": argv}
+    text = ((proc.stdout or "") + "\n" + (proc.stderr or "")).strip()
+
+    def has_ok(label: str) -> bool:
+        return bool(re.search(rf"\[OK\][^\n]*{label}", text, re.I))
+
+    daemon = has_ok("Daemon")
+    extension = has_ok("Extension")
+    connectivity = has_ok("Connectivity")
+    return {
+        "ok": proc.returncode == 0 and daemon and extension and connectivity,
+        "daemon": daemon,
+        "extension": extension,
+        "connectivity": connectivity,
+        "returncode": proc.returncode,
+        "raw": text[-4000:],
+        "argv": argv,
+    }
 
 
 class Runner:
@@ -79,6 +178,7 @@ class Runner:
 
         allow_empty=True 时,EMPTY_RESULT(例如视频没有评论)返回 [] 而非报错。
         """
+        daemon_restarted = False
         for attempt in range(self.retry + 1):
             if self.checkpoint:
                 self.checkpoint()
@@ -96,11 +196,31 @@ class Runner:
                 raise OpencliAuthError(message)
             if code == "EMPTY_RESULT" and allow_empty:
                 return []
+            if (not daemon_restarted) and "navigation rejected" in (message or "").lower():
+                daemon_restarted = True
+                self._restart_daemon()
+                continue
             if attempt < self.retry:
                 time.sleep(self.interval)
                 continue
-            raise OpencliError(f"opencli {' '.join(args[:4])} failed: [{code}] {message} {help_}")
+            shown = " ".join(args)
+            if len(shown) > 500:
+                shown = shown[:500] + "…"
+            raise OpencliError(f"opencli {shown} failed: [{code}] {message} {help_}")
         raise OpencliError("unreachable")
+
+    def _restart_daemon(self):
+        """浏览器桥会话脏掉时重启 daemon,再重试一次(不经 .cmd)。"""
+        try:
+            subprocess.run(
+                self._opencli + ["daemon", "restart"],
+                capture_output=True, text=True,
+                encoding="utf-8", errors="replace",
+                timeout=60,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return
+        time.sleep(3)
 
     def _throttle(self):
         wait = self.interval - (time.time() - self._last_call)

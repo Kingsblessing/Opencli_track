@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# Opencli_track 引导(macOS / Linux):
+#   项目内 opencli(--prefix .tools/opencli)+ .venv,然后启动 WebUI。
+# 不 npm install -g。Node 优先用系统已有的,没有再尝试 brew/apt。
+set -e
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+
+log() { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
+
+if ! command -v uv >/dev/null 2>&1; then
+  log "安装 uv (Python 环境管理器)"
+  if command -v curl >/dev/null 2>&1; then
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+  else
+    wget -qO- https://astral.sh/uv/install.sh | sh
+  fi
+  export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+fi
+command -v uv >/dev/null 2>&1 || { echo "uv 安装失败,请手动安装: https://docs.astral.sh/uv/"; exit 1; }
+
+if [ ! -x .venv/bin/python ]; then
+  log "创建 Python 虚拟环境 (uv 自动下载所需 Python)"
+  uv venv .venv --python 3.11
+fi
+log "安装 Python 依赖"
+uv pip install --python .venv/bin/python -q -r requirements.txt
+
+MAIN=".tools/opencli/node_modules/@jackwener/opencli/dist/src/main.js"
+if [ ! -f "$MAIN" ]; then
+  if ! command -v npm >/dev/null 2>&1; then
+    log "未检测到 Node.js/npm"
+    if command -v brew >/dev/null 2>&1; then
+      echo "尝试用 Homebrew 安装 Node LTS…"; brew install node@22 || true
+    elif command -v apt-get >/dev/null 2>&1; then
+      echo "尝试用 apt 安装 Node…"; (curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt-get install -y nodejs) || true
+    fi
+  fi
+  if ! command -v npm >/dev/null 2>&1; then
+    echo "无法自动安装 Node.js。请先安装 Node 22+ 后重跑:"
+    echo "    macOS:  brew install node"
+    echo "    Ubuntu: sudo apt install nodejs npm"
+    exit 1
+  fi
+  log "安装 opencli 到项目 .tools/opencli (非全局)"
+  mkdir -p .tools/opencli .tools/npm-cache
+  npm install --prefix .tools/opencli --cache .tools/npm-cache @jackwener/opencli
+fi
+
+export OPENCLI_CACHE_DIR="$ROOT/.opencli-home/cache"
+mkdir -p "$OPENCLI_CACHE_DIR"
+
+log "opencli 体检 (失败不中断,可在 WebUI 引导页继续)"
+if [ -x .tools/node/bin/node ] && [ -f "$MAIN" ]; then
+  .tools/node/bin/node "$MAIN" doctor || true
+elif command -v node >/dev/null 2>&1 && [ -f "$MAIN" ]; then
+  node "$MAIN" doctor || true
+else
+  echo "未找到项目内 opencli,跳过 doctor"
+fi
+echo
+echo "提示: 抖音/小红书采集需先在 Chrome 登录对应网站;浏览器采集需要本机 Chrome。"
+echo "扩展商店: https://chromewebstore.google.com/detail/opencli/ildkmabpimmkaediidaifkhjpohdnifk"
+
+log "启动 WebUI"
+exec .venv/bin/python main.py --webui

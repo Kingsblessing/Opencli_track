@@ -10,7 +10,36 @@
 <header>
   <h1>Opencli_track 采集控制台</h1>
   <div id="job-badge" class="badge idle">空闲</div>
+  <button id="btn-setup" class="small header-setup">环境检测</button>
 </header>
+
+<div id="setup-gate" class="setup-gate" hidden>
+  <section class="card setup-card">
+    <h2>首次环境引导</h2>
+    <p class="section-desc">工具链已在项目目录内。Chrome、扩展和网站登录需要你确认一次。扩展是否装好以 doctor 为准,不能代替你点击「添加至 Chrome」。</p>
+    <ul id="setup-checks" class="setup-checks"></ul>
+    <div class="row">
+      <button id="btn-open-store" class="primary">打开插件商店</button>
+      <button id="btn-open-ext">打开扩展管理</button>
+      <button id="btn-setup-refresh">重新检测</button>
+    </div>
+    <div class="row">
+      <button data-open="login_bilibili">登录哔哩哔哩</button>
+      <button data-open="login_douyin">登录抖音</button>
+      <button data-open="login_xiaohongshu">登录小红书</button>
+    </div>
+    <div class="row setup-logins">
+      <label><input type="checkbox" id="login-bilibili"> 已登录 B站</label>
+      <label><input type="checkbox" id="login-douyin"> 已登录抖音</label>
+      <label><input type="checkbox" id="login-xiaohongshu"> 已登录小红书</label>
+    </div>
+    <pre id="setup-raw" class="setup-raw"></pre>
+    <div class="row">
+      <button id="btn-setup-enter" class="primary">进入控制台</button>
+      <span class="hint">doctor 全绿会自动进入;未通过时点此即「稍后配置」</span>
+    </div>
+  </section>
+</div>
 
 <nav>
   <button class="tab active" data-tab="jobs">任务</button>

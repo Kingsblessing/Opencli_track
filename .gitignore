@@ -1,9 +1,13 @@
 # ============ 运行环境与缓存(不入库) ============
 # 虚拟环境:包含指向本机 Python 的符号链接与绝对路径,换机器必然失效。
-# 请用 ./run.sh / run.ps1 或 pip install -r requirements.txt 重建。
+# 请用 Start.bat / Start.sh 重建。
 .venv/
 venv/
 env/
+
+# 项目内 Node / opencli / npm 缓存(换机由引导脚本下载,不入库)
+.tools/
+.opencli-home/
 
 __pycache__/
 *.py[cod]
@@ -12,6 +16,8 @@ __pycache__/
 # 日志
 logs/
 *.log
+
+zcode对话.txt
 
 # ============ 采集产物(不入库) ============
 # 目录由程序自动创建(data/ 与 output/),无需占位文件
